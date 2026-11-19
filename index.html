@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Helia IPFS Relay</title>
+<meta name="description" content="A complete Helia IPFS node running in a static page — full browser transport stack, circuit relay v2 server, persistent peer ID.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5 21 7.5v9L12 21.5 3 16.5v-9L12 2.5Z' fill='none' stroke='%2338bdf8' stroke-width='1.8' stroke-linejoin='round'/%3E%3Ccircle cx='12' cy='12' r='2.6' fill='%2338bdf8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.2.5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.2.5/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5.2.5/700.css">
+<style>
+:root{
+  --p-bg: oklch(0.145 0.012 260);
+  --p-surface: oklch(0.185 0.012 260);
+  --p-surface-2: oklch(0.215 0.012 260);
+  --p-border: oklch(0.27 0.012 260);
+  --p-text: oklch(0.87 0.008 260);
+  --p-text-2: oklch(0.65 0.01 260);
+  --p-accent: oklch(0.80 0.12 195);
+  --p-accent-deep: oklch(0.62 0.13 195);
+  --p-green: oklch(0.78 0.15 155);
+  --p-amber: oklch(0.80 0.13 85);
+  --p-red: oklch(0.68 0.19 25);
+  --bg: var(--p-bg);
+  --surface: var(--p-surface);
+  --surface-2: var(--p-surface-2);
+  --border: var(--p-border);
+  --text: var(--p-text);
+  --text-2: var(--p-text-2);
+  --accent: var(--p-accent);
+  --radius: 8px;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--mono);
+  font-size:14px;line-height:1.6;
+  color:var(--text);background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+  min-height:100dvh;
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font-family:inherit;cursor:pointer}
+::selection{background:var(--p-accent-deep);color:oklch(0.98 0.005 260)}
+
+/* ---------- header ---------- */
+.topbar{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:14px 20px;border-bottom:1px solid var(--border);
+  background:var(--surface);
+  position:sticky;top:0;z-index:10;
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:0.02em}
+.brand svg{flex:none}
+.status-pill{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:3px 10px;border-radius:99px;border:1px solid var(--border);
+  background:var(--bg);color:var(--text-2);font-size:12px;
+}
+.status-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--text-2);transition:background 160ms ease-out}
+.status-pill[data-state="starting"] .dot{background:var(--p-amber);animation:pulse 1s ease-in-out infinite}
+.status-pill[data-state="running"] .dot{background:var(--p-green)}
+.status-pill[data-state="error"] .dot{background:var(--p-red)}
+@keyframes pulse{50%{opacity:0.35}}
+@media (prefers-reduced-motion:reduce){.status-pill .dot{animation:none}}
+.topbar .spacer{flex:1}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:2px;margin-left:6px}
+.tab{
+  padding:6px 14px;border-radius:6px;border:1px solid transparent;background:transparent;
+  color:var(--text-2);font-size:12.5px;font-weight:500;letter-spacing:0.04em;font-family:inherit;
+  transition:color 120ms ease-out,border-color 120ms ease-out;
+}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-color:var(--border);background:var(--bg)}
+@media (max-width:640px){.tabs{margin-left:0;width:100%;order:3}}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:40px;padding:0 16px;border-radius:var(--radius);
+  border:1px solid var(--border);background:var(--surface-2);color:var(--text);
+  font-size:13px;font-weight:500;transition:transform 120ms ease-out,border-color 120ms ease-out;
+}
+.btn:hover:not(:disabled){border-color:var(--p-accent-deep)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{opacity:0.45;cursor:not-allowed}
+.btn.primary{background:var(--p-accent-deep);border-color:var(--p-accent-deep);color:oklch(0.98 0.005 260)}
+.btn.primary:hover:not(:disabled){background:var(--p-accent)}
+.btn.danger{background:transparent;border-color:var(--p-red);color:var(--p-red)}
+.btn.danger:hover:not(:disabled){background:oklch(0.68 0.19 25 / 0.12)}
+
+/* ---------- layout ---------- */
+.layout{
+  display:grid;grid-template-columns:repeat(12,1fr);gap:16px;
+  padding:20px;max-width:1440px;margin:0 auto;
+}
+.card{
+  grid-column:span 6;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  display:flex;flex-direction:column;min-width:0;
+}
+.card.wide{grid-column:span 12}
+.card.third{grid-column:span 4}
+.card h2{
+  font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;
+  color:var(--text-2);padding:12px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;
+}
+.card h2 .count{
+  margin-left:auto;font-weight:500;letter-spacing:0;color:var(--accent);font-size:11px;
+}
+.card .body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+@media (max-width:980px){.card,.card.third{grid-column:span 12}}
+
+/* ---------- kv / data rows ---------- */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:12.5px;align-items:baseline}
+.kv dt{color:var(--text-2);white-space:nowrap}
+.kv dd{color:var(--text);word-break:break-all;min-width:0}
+.addr-row{
+  display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:6px;
+  background:var(--bg);border:1px solid var(--border);font-size:12px;
+}
+.addr-row .ma{flex:1;word-break:break-all;color:var(--text)}
+.addr-row .tag{
+  flex:none;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
+  color:var(--accent);border:1px solid var(--p-accent-deep);border-radius:4px;padding:1px 5px;margin-top:1px;
+}
+.icon-btn{
+  flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text-2);
+  transition:color 120ms ease-out,border-color 120ms ease-out;
+}
+.icon-btn:hover{color:var(--accent);border-color:var(--p-accent-deep)}
+.empty{color:var(--text-2);font-size:12.5px;font-style:italic}
+
+/* ---------- stats ---------- */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat{
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0;
+}
+.stat .val{font-size:20px;font-weight:700;color:var(--accent);line-height:1.2;font-variant-numeric:tabular-nums}
+.stat .lbl{font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-2)}
+
+/* ---------- tables ---------- */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{
+  text-align:left;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--text-2);font-weight:500;padding:7px 10px;border-bottom:1px solid var(--border);
+  white-space:nowrap;
+}
+td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top;word-break:break-all}
+tr:last-child td{border-bottom:none}
+.dir-in{color:var(--p-green)}
+.dir-out{color:var(--p-amber)}
+
+/* ---------- forms ---------- */
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field label{font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-2)}
+.input,textarea.input{
+  width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-family:inherit;font-size:12.5px;padding:9px 11px;
+  transition:border-color 120ms ease-out;
+}
+.input:focus{border-color:var(--p-accent-deep);outline:none}
+textarea.input{resize:vertical;min-height:64px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.row .field{flex:1;min-width:200px}
+#selfBody{display:none;flex-direction:column;gap:12px;min-width:0}
+#selfBody.show{display:flex}
+@media (max-width:640px){
+  .row{flex-direction:column;align-items:stretch}
+  .row .field{min-width:0}
+}
+.result{
+  display:none;background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--p-accent-deep);
+  border-radius:6px;padding:10px 12px;font-size:12px;word-break:break-all;white-space:pre-wrap;
+}
+.result.show{display:block}
+.result.err{border-left-color:var(--p-red);color:var(--p-red)}
+
+/* ---------- log ---------- */
+.log{
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  height:280px;overflow-y:auto;padding:10px 12px;
+  font-size:11.5px;line-height:1.7;
+}
+.log .line{word-break:break-all}
+.log time{color:var(--text-2);margin-right:8px}
+.log .lv-info{color:var(--text)}
+.log .lv-good{color:var(--p-green)}
+.log .lv-warn{color:var(--p-amber)}
+.log .lv-error{color:var(--p-red)}
+.log .lv-accent{color:var(--accent)}
+
+/* ---------- banner ---------- */
+.banner{
+  padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface-2);
+  color:var(--text-2);font-size:12px;line-height:1.6;
+}
+.banner code{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 2.5 21 7.5v9L12 21.5 3 16.5v-9L12 2.5Z" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="2.6" stroke="var(--accent)" stroke-width="1.6"/>
+      <path d="M12 9.4V4.8M14.2 13.3l4 2.3M9.8 13.3l-4 2.3" stroke="var(--accent)" stroke-width="1.6"/>
+    </svg>
+    HELIA&nbsp;IPFS&nbsp;RELAY
+  </div>
+  <span class="status-pill" id="statusPill" data-state="stopped"><span class="dot"></span><span id="statusText">stopped</span></span>
+  <nav class="tabs" aria-label="Pages">
+    <button class="tab active" type="button" data-tab="home">Home</button>
+    <button class="tab" type="button" data-tab="peer">Peer</button>
+  </nav>
+  <span class="spacer"></span>
+  <button class="btn primary" id="btnStart">Start node</button>
+  <button class="btn danger" id="btnStop" disabled>Stop</button>
+</header>
+
+<main class="layout" id="tabHome"></main>
+
+<div id="tabPeer" hidden>
+<div class="banner">
+  This page runs a <strong>complete Helia IPFS node</strong> (libp2p + bitswap) in your browser.
+  It serves <strong>circuit relay v2</strong> reservations for peers that reach it, and makes itself
+  dialable by reserving <code>/p2p-circuit</code> slots on public relays. Your peer identity persists
+  in <code>localStorage</code>; the blockstore is in-memory and resets on reload.
+</div>
+
+<main class="layout">
+
+  <!-- headless relay (shared backend): populated by pollHeadless() in app.js,
+       which fetches /api/relay from server.js. On plain static hosting the
+       card shows an offline note instead. -->
+  <section class="card wide" id="cardHeadless">
+    <h2>Headless relay <span class="count" id="hlState">offline</span></h2>
+    <div class="body">
+      <p class="empty" id="hlNote">No shared backend on this origin. Run <code>npm install &amp;&amp; node server.js</code> from the site folder and reload — the page attaches to it automatically.</p>
+      <div id="hlBody" hidden>
+        <dl class="kv">
+          <dt>Peer ID</dt><dd id="hlPeer"></dd>
+          <dt>Uptime</dt><dd id="hlUptime"></dd>
+          <dt>Agent</dt><dd id="hlAgent"></dd>
+        </dl>
+        <div class="stats">
+          <div class="stat"><span class="val" id="hlResv">0</span><span class="lbl">reservations</span></div>
+          <div class="stat"><span class="val" id="hlConns">0</span><span class="lbl">connections</span></div>
+          <div class="stat"><span class="val" id="hlAddrs">0</span><span class="lbl">listen addrs</span></div>
+        </div>
+        <div id="hlAddrList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- node identity -->
+  <section class="card" id="cardNode">
+    <h2>Node identity</h2>
+    <div class="body">
+      <dl class="kv">
+        <dt>Peer ID</dt><dd id="vPeerId"><span class="empty">— node not started —</span></dd>
+        <dt>Agent</dt><dd id="vAgent"><span class="empty">—</span></dd>
+        <dt>Uptime</dt><dd id="vUptime"><span class="empty">—</span></dd>
+        <dt>Key store</dt><dd id="vKey"><span class="empty">—</span></dd>
+      </dl>
+      <div class="row">
+        <button class="btn" id="btnCopyPeer" disabled>Copy peer ID</button>
+        <button class="btn" id="btnCopyAddr" disabled>Copy relay address</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- listen addresses -->
+  <section class="card" id="cardAddrs">
+    <h2>Advertised addresses <span class="count" id="addrCount"></span></h2>
+    <div class="body" id="addrList">
+      <span class="empty">Addresses appear here once the node is started and has reserved slots on public relays.</span>
+    </div>
+  </section>
+
+  <!-- relay service -->
+  <section class="card third" id="cardRelay">
+    <h2>Relay service</h2>
+    <div class="body">
+      <div class="stats">
+        <div class="stat"><span class="val" id="stResv">0</span><span class="lbl">reservations</span></div>
+        <div class="stat"><span class="val" id="stRelayed">0</span><span class="lbl">relayed conns</span></div>
+        <div class="stat"><span class="val" id="stDirect">0</span><span class="lbl">direct conns</span></div>
+      </div>
+      <p class="empty" id="relayLimits">Reservation limits shown while running.</p>
+    </div>
+  </section>
+
+  <!-- network -->
+  <section class="card third" id="cardNet">
+    <h2>Network</h2>
+    <div class="body">
+      <div class="stats">
+        <div class="stat"><span class="val" id="stPeers">0</span><span class="lbl">peers</span></div>
+        <div class="stat"><span class="val" id="stConns">0</span><span class="lbl">connections</span></div>
+        <div class="stat"><span class="val" id="stAddrs">0</span><span class="lbl">addresses</span></div>
+      </div>
+      <dl class="kv">
+        <dt>DHT</dt><dd id="vDht">client mode (random-walk)</dd>
+        <dt>Transports</dt><dd>websockets · webtransport · webrtc · circuit-relay-v2</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- connections table -->
+  <section class="card third" id="cardConns">
+    <h2>Connections <span class="count" id="connCount">0</span></h2>
+    <div class="body">
+      <div class="table-wrap" style="max-height:220px;overflow-y:auto">
+        <table>
+          <thead><tr><th>Peer</th><th>Dir</th><th>Via</th></tr></thead>
+          <tbody id="connTbody">
+            <tr><td colspan="3" class="empty">No connections yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- pubsub -->
+  <section class="card wide" id="cardPubsub">
+    <h2>Pubsub · gnostr <span class="count"><span id="psCount">0</span> peers</span></h2>
+    <div class="body">
+      <div class="row">
+        <div class="field" style="flex:2;min-width:220px">
+          <label for="psInput">Message</label>
+          <input class="input" id="psInput" placeholder="hello gnostr">
+        </div>
+        <button class="btn" id="btnPublish" disabled>Publish</button>
+      </div>
+      <div class="log" id="psFeed" style="height:180px">
+        <div class="line"><span class="lv-warn">Messages on the "gnostr" topic appear here once peers connect.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- git clone -->
+  <section class="card wide" id="cardGitClone">
+    <h2>Git clone</h2>
+    <div class="body">
+      <dl class="kv">
+        <dt>Command</dt><dd id="gitCloneCmd"></dd>
+      </dl>
+      <div class="row">
+        <button class="btn" id="btnCopyCloneCmd" disabled>Copy clone command</button>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:2;min-width:220px">
+          <label for="gitUrlInput">External repo URL (optional — proxied via the backend)</label>
+          <input class="input" id="gitUrlInput" placeholder="https://github.com/user/repo — blank clones this site" spellcheck="false">
+        </div>
+        <button class="btn" id="btnClone" disabled>Clone into browser</button>
+      </div>
+      <div class="result" id="gitStatus"></div>
+      <div id="gitBrowse" hidden>
+        <dl class="kv"><dt>HEAD</dt><dd id="gitInfo"></dd></dl>
+        <div id="gitFiles"></div>
+        <div class="result" id="gitFileView"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- gnostr repo ads -->
+  <section class="card wide" id="cardGitAds">
+    <h2>Git repos on gnostr <span class="count" id="gitAdCount">0</span></h2>
+    <div class="body">
+      <p class="empty">Repos announced on the "gnostr" topic appear here — your own once self-hosting publishes, and peers' as their ads arrive.</p>
+      <div id="gitAdList"></div>
+    </div>
+  </section>
+
+  <!-- RE-ENABLE (3): dial a peer. Uncomment the section below AND restore
+       the matching code in app.js (see the "REMOVED FEATURES — HOW TO
+       RE-ENABLE" block at the end of app.js, FEATURE 3).
+  <section class="card wide" id="cardDial">
+    <h2>Dial a peer</h2>
+    <div class="body">
+      <div class="row">
+        <div class="field">
+          <label for="dialInput">Multiaddr or peer ID</label>
+          <input class="input" id="dialInput" spellcheck="false"
+                 placeholder="/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN">
+        </div>
+        <button class="btn primary" id="btnDial" disabled>Dial</button>
+      </div>
+      <div class="result" id="dialResult"></div>
+    </div>
+  </section>
+  -->
+
+  <!-- RE-ENABLE (1): content card (add text / add file / fetch CID).
+       Uncomment the section below AND restore the matching code in app.js
+       (see the "REMOVED FEATURES — HOW TO RE-ENABLE" block at the end of app.js).
+  <section class="card wide" id="cardContent">
+    <h2>Content</h2>
+    <div class="body">
+      <div class="row">
+        <div class="field" style="flex:2;min-width:220px">
+          <label for="addText">Add text to IPFS</label>
+          <input class="input" id="addText" placeholder="hello ipfs">
+        </div>
+        <button class="btn" id="btnAddText" disabled>Add text</button>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:2;min-width:220px">
+          <label for="addFile">Add a file to IPFS</label>
+          <input class="input" id="addFile" type="file">
+        </div>
+        <button class="btn" id="btnAddFile" disabled>Add file</button>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:2;min-width:220px">
+          <label for="catInput">Fetch a CID (unixfs cat)</label>
+          <input class="input" id="catInput" placeholder="bafy..." spellcheck="false">
+        </div>
+        <button class="btn" id="btnCat" disabled>Fetch CID</button>
+      </div>
+      <div class="result" id="addResult"></div>
+      <div class="result" id="catResult"></div>
+    </div>
+  </section>
+  -->
+
+  <!-- self-hosting -->
+  <section class="card wide" id="cardSelf">
+    <h2>Self-hosting</h2>
+    <div class="body">
+      <p class="empty" id="selfNote">The node publishes its own source code here once running — as a git bundle (directly <code>git clone</code>-able) and as a UnixFS directory.</p>
+      <div id="selfBody">
+        <dl class="kv">
+          <dt>Git bundle</dt><dd id="vBundleCid"></dd>
+          <dt>Source dir</dt><dd id="vDirCid"></dd>
+        </dl>
+        <div class="row">
+          <button class="btn" id="btnCopyBundle" disabled>Copy bundle CID</button>
+          <button class="btn" id="btnCopyDir" disabled>Copy dir CID</button>
+          <button class="btn" id="btnCopyClone" disabled>Copy clone command</button>
+        </div>
+        <div class="result show" id="cloneHelp"></div>
+        <div class="row">
+          <button class="btn" id="btnExportCar" disabled>Export CAR</button>
+          <!-- RE-ENABLE (2): CAR import. Uncomment the field and button below
+               AND restore the matching code in app.js (see the
+               "REMOVED FEATURES — HOW TO RE-ENABLE" block at the end of app.js).
+          <div class="field" style="flex:2;min-width:220px">
+            <label for="carFile">Import a CAR file into the blockstore</label>
+            <input class="input" type="file" id="carFile" accept=".car">
+          </div>
+          <button class="btn" id="btnImportCar" disabled>Import CAR</button>
+          -->
+        </div>
+        <div class="result" id="carResult"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- log -->
+  <section class="card wide" id="cardLog">
+    <h2>Event log <span class="count"><button class="icon-btn" id="btnClearLog" aria-label="Clear log" title="Clear log">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 3V1.8h2V3M3.5 3l.4 7.2h4.2L8.5 3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+    </button></span></h2>
+    <div class="body">
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<script type="module" src="./relay.js"></script>
+</body>
+</html>
